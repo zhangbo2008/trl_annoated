@@ -158,7 +158,7 @@ class RewardTrainer(Trainer):
             optimizers,
             preprocess_logits_for_metrics,
         )
-
+#=========重写了一个loss函数.覆盖了父类trainer里面的方法.来进行模型的forward, backward.
     def compute_loss(
         self,
         model: Union[PreTrainedModel, nn.Module],
@@ -169,15 +169,16 @@ class RewardTrainer(Trainer):
             raise NotImplementedError(
                 "compute_loss is only implemented for RewardDataCollatorWithPadding, please implement your own compute_loss method if you are using a custom data collator"
             )
+        #====== 模型在2个输入上跑两边.
         rewards_chosen = model(input_ids=inputs["input_ids_chosen"], attention_mask=inputs["attention_mask_chosen"])[0]
         rewards_rejected = model(
             input_ids=inputs["input_ids_rejected"], attention_mask=inputs["attention_mask_rejected"]
-        )[0]
+        )[0]  # 让chosen趋近于无穷, rejected趋近于负无穷即可.
         loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
         if return_outputs:
             return loss, {"rewards_chosen": rewards_chosen, "rewards_rejected": rewards_rejected}
         return loss
-
+#=======同时也重写了预测部分代码.
     def prediction_step(
         self,
         model: Union[PreTrainedModel, nn.Module],
@@ -198,9 +199,9 @@ class RewardTrainer(Trainer):
         if prediction_loss_only:
             return (loss, None, None)
 
-        loss = loss.detach()
+        loss = loss.detach()#======禁止后续求梯度,因为我们只要forward.
         logits = tuple(v for k, v in logits_dict.items() if k not in ignore_keys)
-        logits = nested_detach(logits)
+        logits = nested_detach(logits) #级联去detach
         # Stack accepted against rejected, mean over logits
         # and softmax to get preferences between accepted and rejected to sum to 1
         logits = torch.stack(logits).mean(dim=2).softmax(dim=0).T

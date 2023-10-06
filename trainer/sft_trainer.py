@@ -215,7 +215,7 @@ class SFTTrainer(Trainer):
             self.train_dataset.infinite = True
         elif self.args.max_steps == -1 and packing:
             self.train_dataset.infinite = False
-
+# packing是否返回等长的数据.
     def _prepare_dataset(
         self,
         dataset,

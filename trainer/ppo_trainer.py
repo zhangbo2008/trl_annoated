@@ -334,16 +334,16 @@ class PPOTrainer(BaseTrainer):
 
         PPODecorators.optimize_cuda_cache = self.config.optimize_cuda_cache
 
-    def _filter_kwargs(self, kwargs, target_func):
+    def _filter_kwargs(self, kwargs, target_func):#
         """
         filter the keyword arguments that are supported by the target function.
-
+        #======把kwargs里面参数根据名字只选取target_func需要的部分.
         Args:
             kwargs (dict):
                 Keyword arguments
             target_func (function):
                 Target function
-        """
+        """      # inspect.signature获取参数信息.inspect.signature(target_func).parameters 获取里面参数信息,返回一个字典.
         return {k: v for k, v in kwargs.items() if k in inspect.signature(target_func).parameters.keys()}
 
     def prepare_dataloader(self, dataset: Union[torch.utils.data.Dataset, Dataset], data_collator=None):
@@ -372,7 +372,7 @@ class PPOTrainer(BaseTrainer):
         return dataloader
 
     # Adapted from transformers.Trainer._set_signature_columns_if_needed
-    def _set_signature_columns_if_needed(self):
+    def _set_signature_columns_if_needed(self): # 添加model的入参, label, query, response
         if self._signature_columns is None:
             # Inspect model forward signature to keep only the arguments it accepts.
             signature = inspect.signature(self.model.forward)
@@ -461,7 +461,7 @@ class PPOTrainer(BaseTrainer):
 
         padding_side_default = self.tokenizer.padding_side
         if not self.is_encoder_decoder:
-            self.tokenizer.padding_side = "left"
+            self.tokenizer.padding_side = "left" ##########?????????左面吗???????
 
         # in case we have fewer examples than bs
         batch_size = min(len(query_tensors), batch_size)
@@ -473,7 +473,7 @@ class PPOTrainer(BaseTrainer):
             # prevent overflow if query tensors are not even multiple of bs
             end_index = min(len(query_tensors), i + batch_size)
 
-            batch = query_tensors[i:end_index]
+            batch = query_tensors[i:end_index]#=========拼成batch
             batch_mask = [torch.ones_like(element) for element in batch]
             inputs = {"input_ids": batch, "attention_mask": batch_mask}
 
@@ -486,10 +486,10 @@ class PPOTrainer(BaseTrainer):
             ).to(self.current_device)
 
             generations = self.accelerator.unwrap_model(self.model).generate(**padded_inputs, **generation_kwargs)
-
+            #=========
             for generation, mask in zip(generations, padded_inputs["attention_mask"]):
                 if not self.is_encoder_decoder:
-                    output = generation[(1 - mask).sum() :]  # remove padding
+                    output = generation[(1 - mask).sum() :]  # remove padding 因为这时候padding=right
                 else:
                     output = generation
 
@@ -505,7 +505,7 @@ class PPOTrainer(BaseTrainer):
 
         self.tokenizer.padding_side = padding_side_default
         return outputs
-
+#=====输入的格式合法性检测.
     def _step_safety_checker(
         self,
         batch_size: int,
@@ -551,7 +551,7 @@ class PPOTrainer(BaseTrainer):
                 scores[i] = score.squeeze()
 
         return queries, responses, scores
-
+#=========核心的单步训练代码.
     @PPODecorators.empty_cuda_cache()
     def step(
         self,
@@ -617,6 +617,7 @@ class PPOTrainer(BaseTrainer):
 
         model_inputs_names = list(model_inputs.keys())
 
+#=======前向得到概率和refprobs.refmodel跟model结构完全一样,用来生成kl散度的.
         with torch.no_grad():
             all_logprobs, _, values, masks = self.batched_forward_pass(self.model, queries, responses, model_inputs)
 
@@ -633,6 +634,12 @@ class PPOTrainer(BaseTrainer):
 
             else:
                 ref_logprobs, _, _, _ = self.batched_forward_pass(self.ref_model, queries, responses, model_inputs)
+
+
+
+
+
+
 
         timing["time/ppo/forward_pass"] = time.time() - t
 
